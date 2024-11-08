@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClinicaSmart - Sistema de Agendamento e Gestão</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --primary-color: #3498db;
+        --secondary-color: #2ecc71;
+        --background-color: #f5f5f5;
+        --text-color: #333;
+      }
+      body {
+        font-family: "Arial", sans-serif;
+        color: var(--text-color);
+        background-color: var(--background-color);
+      }
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 1px;
+        background-color: #e0e0e0;
+      }
+      .calendar-day {
+        background-color: white;
+        padding: 10px;
+        min-height: 100px;
+        border-radius: 4px;
+      }
+      .appointment {
+        position: relative;
+        background-color: var(--secondary-color);
+        color: white;
+        padding: 4px 8px;
+        margin-bottom: 4px;
+        border-radius: 4px;
+        font-size: 0.8em;
+      }
+      .appointment-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 2px;
+      }
+      .appointment-actions button {
+        background: none;
+        border: none;
+        padding: 2px 4px;
+        cursor: pointer;
+      }
+      .modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .modal-content {
+        background-color: white;
+        padding: 24px;
+        border-radius: 8px;
+        width: 400px;
+        max-width: 90%;
+      }
+      .btn {
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      .btn-primary {
+        background-color: var(--primary-color);
+        color: white;
+      }
+      .btn-secondary {
+        background-color: var(--secondary-color);
+        color: white;
+      }
+      .btn:hover {
+        opacity: 0.9;
+      }
+    </style>
+    <script type="module">
+      // Data Service
+      const DataService = {
+        getItem(key) {
+          return JSON.parse(localStorage.getItem(key)) || [];
+        },
+        setItem(key, value) {
+          localStorage.setItem(key, JSON.stringify(value));
+        },
+        generateId(items) {
+          return items.length > 0
+            ? Math.max(...items.map((item) => item.id)) + 1
+            : 1;
+        },
+      };
+
+      // Appointment Service
+      const AppointmentService = {
+        getAppointments() {
+          return DataService.getItem("appointments");
+        },
+        addAppointment(appointment) {
+          const appointments = this.getAppointments();
+          appointment.id = DataService.generateId(appointments);
+          appointments.push(appointment);
+          DataService.setItem("appointments", appointments);
+          return appointment;
+        },
+        updateAppointment(updatedAppointment) {
+          const appointments = this.getAppointments();
+          const index = appointments.findIndex(
+            (a) => a.id === updatedAppointment.id
+          );
+          if (index !== -1) {
+            appointments[index] = updatedAppointment;
+            DataService.setItem("appointments", appointments);
+            return true;
+          }
+          return false;
+        },
+        deleteAppointment(id) {
+          const appointments = this.getAppointments();
+          const updatedAppointments = appointments.filter((a) => a.id !== id);
+          DataService.setItem("appointments", updatedAppointments);
+          return appointments.length !== updatedAppointments.length;
+        },
+      };
+
+      // Patient Service
+      const PatientService = {
+        getPatients() {
+          return DataService.getItem("patients");
+        },
+        addPatient(patient) {
+          const patients = this.getPatients();
+          patient.id = DataService.generateId(patients);
+          patients.push(patient);
+          DataService.setItem("patients", patients);
+          return patient;
+        },
+        updatePatient(updatedPatient) {
+          const patients = this.getPatients();
+          const index = patients.findIndex((p) => p.id === updatedPatient.id);
+          if (index !== -1) {
+            patients[index] = updatedPatient;
+            DataService.setItem("patients", patients);
+            return true;
+          }
+          return false;
+        },
+        deletePatient(id) {
+          const patients = this.getPatients();
+          const updatedPatients = patients.filter((p) => p.id !== id);
+          DataService.setItem("patients", updatedPatients);
+          return patients.length !== updatedPatients.length;
+        },
+      };
+
+      // Financial Service
+      const FinancialService = {
+        getReports() {
+          return DataService.getItem("financialReports");
+        },
+        addReport(report) {
+          const reports = this.getReports();
+          report.id = DataService.generateId(reports);
+          reports.push(report);
+          DataService.setItem("financialReports", reports);
+          return report;
+        },
+        addExpense(expense) {
+          const expenses = this.getExpenses();
+          expense.id = DataService.generateId(expenses);
+          expense.date = new Date().toISOString();
+          expenses.push(expense);
+          DataService.setItem("expenses", expenses);
+          return expense;
+        },
+        getExpenses() {
+          return DataService.getItem("expenses");
+        },
+        getPayments() {
+          return DataService.getItem("payments");
+        },
+        addPayment(payment) {
+          const payments = this.getPayments();
+          payment.id = DataService.generateId(payments);
+          payment.date = new Date().toISOString();
+          payments.push(payment);
+          DataService.setItem("payments", payments);
+          return payment;
+        },
+        updatePayment(updatedPayment) {
+          const payments = this.getPayments();
+          const index = payments.findIndex((p) => p.id === updatedPayment.id);
+          if (index !== -1) {
+            payments[index] = updatedPayment;
+            DataService.setItem("payments", payments);
+            return true;
+          }
+          return false;
+        },
+      };
+
+      // Vue instance
+      new Vue({
+        el: "#app",
+        data() {
+          return {
+            currentView: "agendamento",
+            appointments: [],
+            patients: [],
+            financialReports: [],
+            workingHours: [
+              { name: "Segunda", active: true, start: "08:00", end: "18:00" },
+              { name: "Terça", active: true, start: "08:00", end: "18:00" },
+              { name: "Quarta", active: true, start: "08:00", end: "18:00" },
+              { name: "Quinta", active: true, start: "08:00", end: "18:00" },
+              { name: "Sexta", active: true, start: "08:00", end: "18:00" },
+              { name: "Sábado", active: false, start: "08:00", end: "12:00" },
+              { name: "Domingo", active: false, start: "08:00", end: "12:00" },
+            ],
+            integrations: {
+              googleCalendar: true,
+              payment: true,
+              videoConference: true,
+            },
+            showModal: false,
+            modalType: "",
+            modalTitle: "",
+            newAppointment: {
+              date: "",
+              time: "",
+              patientId: "",
+              patientName: "",
+            },
+            newPatient: {
+              name: "",
+              email: "",
+              phone: "",
+            },
+            currentMonth: new Date().getMonth(),
+            currentYear: new Date().getFullYear(),
+            notifications: [],
+            filterDates: {
+              start: "",
+              end: "",
+            },
+            newExpense: {
+              description: "",
+              amount: "",
+            },
+            newPayment: { patientId: "", amount: "" },
+            filteredExpenses: [],
+            filteredPayments: [],
+            financialSummary: {},
+            showSummaryModal: false,
+          };
+        },
+        computed: {
+          pendingPayments() {
+            // Calculate the total amount of pending payments
+            return this.payments
+              .filter((payment) => payment.status === "Pendente") // Filter for pending payments
+              .reduce((sum, payment) => sum + payment.amount, 0); // Sum their amounts
+          },
+          currentMonthYear() {
+            const months = [
+              "Janeiro",
+              "Fevereiro",
+              "Março",
+              "Abril",
+              "Maio",
+              "Junho",
+              "Julho",
+              "Agosto",
+              "Setembro",
+              "Outubro",
+              "Novembro",
+              "Dezembro",
+            ];
+            return `${months[this.currentMonth]} ${this.currentYear}`;
+          },
+          calendarDays() {
+            const firstDay = new Date(
+              this.currentYear,
+              this.currentMonth,
+              1
+            ).getDay();
+            const daysInMonth = new Date(
+              this.currentYear,
+              this.currentMonth + 1,
+              0
+            ).getDate();
+            const days = [];
+
+            for (let i = 0; i < firstDay; i++) {
+              days.push({ day: "", date: null, appointments: [] });
+            }
+
+            for (let i = 1; i <= daysInMonth; i++) {
+              const date = new Date(this.currentYear, this.currentMonth, i);
+              days.push({
+                day: i,
+                date: date,
+                appointments: this.getDayAppointments(date),
+              });
+            }
+
+            return days;
+          },
+          todayNotifications() {
+            const today = new Date();
+            return this.appointments
+              .filter((appointment) => {
+                const appointmentDate = new Date(appointment.date);
+                return (
+                  appointmentDate.getDate() === today.getDate() &&
+                  appointmentDate.getMonth() === today.getMonth() &&
+                  appointmentDate.getFullYear() === today.getFullYear()
+                );
+              })
+              .map((appointment) => ({
+                id: appointment.id,
+                message: `Consulta com ${appointment.patientName}`,
+                time: appointment.time,
+              }));
+          },
+          monthlyRevenue() {
+            return this.financialReports.reduce(
+              (total, report) => total + report.revenue,
+              0
+            );
+          },
+          monthlyExpenses() {
+            return this.financialReports.reduce(
+              (total, report) => total + report.expenses,
+              0
+            );
+          },
+          monthlyProfit() {
+            return this.monthlyRevenue - this.monthlyExpenses;
+          },
+          pendingPayments() {
+            return this.payments
+              ? this.payments.filter((payment) => payment.status === "Pendente")
+              : [];
+          },
+        },
+        methods: {
+          loadData() {
+            this.appointments = AppointmentService.getAppointments();
+            this.patients = PatientService.getPatients();
+            this.financialReports = FinancialService.getReports();
+          },
+          getDayAppointments(date) {
+            return this.appointments.filter((appointment) => {
+              const appointmentDate = new Date(appointment.date);
+              return (
+                appointmentDate.getDate() === date.getDate() &&
+                appointmentDate.getMonth() === date.getMonth() &&
+                appointmentDate.getFullYear() === date.getFullYear()
+              );
+            });
+          },
+          openNewAppointment(date) {
+            this.modalType = "appointment";
+            this.modalTitle = "Novo Agendamento";
+            this.newAppointment = {
+              date: date.toISOString().split("T")[0],
+              time: "",
+              patientId: "",
+              patientName: "",
+            };
+            this.showModal = true;
+          },
+          previousMonth() {
+            if (this.currentMonth === 0) {
+              this.currentMonth = 11;
+              this.currentYear--;
+            } else {
+              this.currentMonth--;
+            }
+          },
+          nextMonth() {
+            if (this.currentMonth === 11) {
+              this.currentMonth = 0;
+              this.currentYear++;
+            } else {
+              this.currentMonth++;
+            }
+          },
+          scheduleWhatsApp() {
+            const phoneNumber = "+5511999999999";
+            const message = encodeURIComponent(
+              "Olá! Gostaria de agendar uma consulta."
+            );
+            window.open(
+              `https://wa.me/${phoneNumber}?text=${message}`,
+              "_blank"
+            );
+          },
+          sendNotification(message) {
+            const notification = {
+              id: Date.now(),
+              message,
+              time: new Date().toLocaleTimeString(),
+            };
+            this.notifications.push(notification);
+
+            setTimeout(() => {
+              const index = this.notifications.findIndex(
+                (n) => n.id === notification.id
+              );
+              if (index !== -1) {
+                this.notifications.splice(index, 1);
+              }
+            }, 5000);
+
+            this.saveNotifications();
+          },
+          saveNotifications() {
+            localStorage.setItem(
+              "notifications",
+              JSON.stringify(this.notifications)
+            );
+          },
+          loadNotifications() {
+            const saved = localStorage.getItem("notifications");
+            if (saved) {
+              this.notifications = JSON.parse(saved);
+            }
+          },
+          submitModal() {
+            if (this.modalType === "appointment") {
+              const patient = this.patients.find(
+                (p) => p.id === this.newAppointment.patientId
+              );
+              if (!patient) {
+                alert("Por favor selecione um paciente cadastrado");
+                return;
+              }
+
+              this.newAppointment.patientName = patient.name;
+
+              if (this.newAppointment.id) {
+                AppointmentService.updateAppointment(this.newAppointment);
+                const index = this.appointments.findIndex(
+                  (a) => a.id === this.newAppointment.id
+                );
+                this.appointments.splice(index, 1, this.newAppointment);
+                this.sendNotification(
+                  `Agendamento atualizado para ${patient.name}`
+                );
+              } else {
+                const newAppointment = AppointmentService.addAppointment(
+                  this.newAppointment
+                );
+                this.appointments.push(newAppointment);
+                this.sendNotification(`Novo agendamento para ${patient.name}`);
+              }
+            } else if (this.modalType === "patient") {
+              const patient = this.newPatient;
+              if (patient.id) {
+                PatientService.updatePatient(patient);
+                const index = this.patients.findIndex(
+                  (p) => p.id === this.newPatient.id
+                );
+                this.patients.splice(index, 1, this.newPatient);
+                this.sendNotification(
+                  `Dados do paciente ${this.newPatient.name} atualizados`
+                );
+              } else {
+                const newPatient = PatientService.addPatient(this.newPatient);
+                this.patients.push(newPatient);
+                this.sendNotification(
+                  `Novo paciente ${newPatient.name} cadastrado`
+                );
+              }
+            }
+            this.showModal = false;
+          },
+          editPatient(id) {
+            const patient = this.patients.find((p) => p.id === id);
+            if (patient) {
+              this.newPatient = { ...patient };
+              this.modalType = "patient";
+              this.modalTitle = "Editar Paciente";
+              this.showModal = true;
+            }
+          },
+          deletePatient(id) {
+            if (confirm("Tem certeza que deseja excluir este paciente?")) {
+              if (PatientService.deletePatient(id)) {
+                this.patients = this.patients.filter((p) => p.id !== id);
+                this.sendNotification("Paciente excluído com sucesso");
+              }
+            }
+          },
+          editAppointment(appointment) {
+            this.modalType = "appointment";
+            this.modalTitle = "Editar Agendamento";
+            this.newAppointment = {
+              ...appointment,
+              patientId:
+                this.patients.find((p) => p.name === appointment.patientName)
+                  ?.id || "",
+            };
+            this.showModal = true;
+          },
+          deleteAppointment(id) {
+            if (confirm("Tem certeza que deseja excluir este agendamento?")) {
+              if (AppointmentService.deleteAppointment(id)) {
+                this.appointments = this.appointments.filter(
+                  (a) => a.id !== id
+                );
+                this.sendNotification("Agendamento excluído com sucesso");
+              }
+            }
+          },
+          openNewPatient() {
+            this.newPatient = { name: "", email: "", phone: "" };
+            this.modalType = "patient";
+            this.modalTitle = "Novo Paciente";
+            this.showModal = true;
+          },
+          closeModal() {
+            this.showModal = false;
+          },
+          addNewPayment() {
+            if (!this.newPayment.patientId || !this.newPayment.amount) return;
+            const payment = FinancialService.addPayment({
+              ...this.newPayment,
+              status: "Pendente",
+            });
+            this.payments.push(payment);
+            this.newPayment = { patientId: "", amount: "" };
+            this.updateCharts();
+          },
+          updateCharts() {
+            this.$nextTick(() => {
+              if (this.financialChart) this.financialChart.update();
+              if (this.cashFlowChart) this.cashFlowChart.update();
+            });
+          },
+          exportFinancialData() {
+            const data = {
+              expenses: this.expenses,
+              payments: this.payments,
+              summary: {
+                revenue: this.monthlyRevenue,
+                expenses: this.monthlyExpenses,
+                profit: this.monthlyProfit,
+                pending: this.pendingPayments,
+              },
+            };
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], {
+              type: "application/json",
+            });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `financial-report-${
+              new Date().toISOString().split("T")[0]
+            }.json`;
+            a.click();
+          },
+          filterByDateRange() {
+            const startDate = this.filterDates.start;
+            const endDate = this.filterDates.end;
+
+            this.filteredExpenses = this.expenses.filter((expense) => {
+              const expenseDate = new Date(expense.date);
+              return (
+                expenseDate >= new Date(startDate) &&
+                expenseDate <= new Date(endDate)
+              );
+            });
+
+            this.filteredPayments = this.payments.filter((payment) => {
+              const paymentDate = new Date(payment.date);
+              return (
+                paymentDate >= new Date(startDate) &&
+                paymentDate <= new Date(endDate)
+              );
+            });
+
+            this.updateCharts();
+          },
+          markPaymentStatus(paymentId, status) {
+            const payment = this.payments.find((p) => p.id === paymentId);
+            if (payment) {
+              payment.status = status;
+              FinancialService.updatePayment(payment);
+              this.sendNotification(`Pagamento ${status}`);
+            }
+          },
+          generateFinancialSummary() {
+            const summary = {
+              totalRevenue: this.payments.reduce((sum, p) => sum + p.amount, 0),
+              totalExpenses: this.expenses.reduce(
+                (sum, e) => sum + e.amount,
+                0
+              ),
+              pendingPayments: this.pendingPayments,
+              profitMargin: (
+                ((this.monthlyRevenue - this.monthlyExpenses) /
+                  this.monthlyRevenue) *
+                100
+              ).toFixed(2),
+            };
+
+            this.showSummaryModal = true;
+            this.financialSummary = summary;
+          },
+          formatDate(date) {
+            return new Date(date).toLocaleDateString();
+          },
+          getPatientName(patientId) {
+            const patient = this.patients.find((p) => p.id === patientId);
+            return patient ? patient.name : "";
+          },
+        },
+        mounted() {
+          this.loadData();
+          this.loadNotifications();
+          const ctx = document
+            .getElementById("financialChart")
+            .getContext("2d");
+          new Chart(ctx, {
+            type: "bar",
+            data: {
+              labels: this.financialReports.map((report) => report.month),
+              datasets: [
+                {
+                  label: "Receitas",
+                  data: this.financialReports.map((report) => report.revenue),
+                  backgroundColor: "rgba(75, 192, 192, 0.6)",
+                },
+                {
+                  label: "Despesas",
+                  data: this.financialReports.map((report) => report.expenses),
+                  backgroundColor: "rgba(255, 99, 132, 0.6)",
+                },
+              ],
+            },
+            options: {
+              scales: {
+                y: {
+                  beginAtZero: true,
+                },
+              },
+            },
+          });
+
+          setInterval(() => {
+            this.loadData();
+          }, 60000);
+        },
+      });
+    </script>
+  </head>
+  <body class="bg-gray-100">
+    <div id="app" class="container mx-auto p-4">
+      <header class="bg-white shadow-md p-4 mb-6">
+        <h1 class="text-2xl font-bold text-primary-color">ClinicaSmart</h1>
+        <nav class="mt-4">
+          <ul class="flex space-x-6">
+            <li>
+              <a
+                href="#"
+                @click="currentView = 'agendamento'"
+                :class="{'font-bold': currentView === 'agendamento'}"
+                class="text-primary-color hover:underline"
+                >Agendamento</a
+              >
+            </li>
+            <li>
+              <a
+                href="#"
+                @click="currentView = 'pacientes'"
+                :class="{'font-bold': currentView === 'pacientes'}"
+                class="text-primary-color hover:underline"
+                >Pacientes</a
+              >
+            </li>
+            <li>
+              <a
+                href="#"
+                @click="currentView = 'configuracoes'"
+                :class="{'font-bold': currentView === 'configuracoes'}"
+                class="text-primary-color hover:underline"
+                >Configurações</a
+              >
+            </li>
+          </ul>
+        </nav>
+      </header>
+      <main>
+        <div
+          v-if="currentView === 'agendamento'"
+          class="bg-white p-6 rounded-lg shadow-md"
+        >
+          <h2 class="text-xl font-bold mb-4">Agendamento Online</h2>
+          <div class="flex justify-between items-center mb-4">
+            <button @click="previousMonth" class="btn btn-primary">
+              &lt; Anterior
+            </button>
+            <h3 class="text-lg font-bold">{{ currentMonthYear }}</h3>
+            <button @click="nextMonth" class="btn btn-primary">
+              Próximo &gt;
+            </button>
+          </div>
+          <div class="calendar-grid">
+            <div
+              v-for="day in ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']"
+              :key="day"
+              class="text-center font-bold p-2"
+            >
+              {{ day }}
+            </div>
+            <div
+              v-for="day in calendarDays"
+              :key="day.date"
+              class="calendar-day"
+            >
+              <div class="text-right mb-2">{{ day.day }}</div>
+              <div
+                v-for="appointment in day.appointments"
+                :key="appointment.id"
+                class="appointment"
+              >
+                {{ appointment.time }} - {{ appointment.patientName }}
+                <div class="appointment-actions">
+                  <button
+                    @click="editAppointment(appointment)"
+                    class="text-xs text-white hover:text-gray-200"
+                  >
+                    <i class="fas fa-edit"></i> Editar</button
+                  ><button
+                    @click="deleteAppointment(appointment.id)"
+                    class="text-xs text-white hover:text-gray-200 ml-2"
+                  >
+                    <i class="fas fa-trash"></i> Excluir
+                  </button>
+                </div>
+              </div>
+              <button
+                v-if="day.date"
+                @click="openNewAppointment(day.date)"
+                class="mt-2 btn btn-secondary text-sm"
+              >
+                + Novo
+              </button>
+            </div>
+          </div>
+        </div>
+        <div
+          v-if="currentView === 'pacientes'"
+          class="bg-white p-6 rounded-lg shadow-md"
+        >
+          <h2 class="text-xl font-bold mb-4">Gestão de Pacientes</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full">
+              <thead>
+                <tr>
+                  <th class="p-2 text-left">Nome</th>
+                  <th class="p-2 text-left">Email</th>
+                  <th class="p-2 text-left">Telefone</th>
+                  <th class="p-2 text-left">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="patient in patients"
+                  :key="patient.id"
+                  class="border-b"
+                >
+                  <td class="p-2">{{ patient.name }}</td>
+                  <td class="p-2">{{ patient.email }}</td>
+                  <td class="p-2">{{ patient.phone }}</td>
+                  <td class="p-2">
+                    <button
+                      @click="editPatient(patient.id)"
+                      class="btn btn-primary mr-2"
+                    >
+                      Editar</button
+                    ><button
+                      @click="deletePatient(patient.id)"
+                      class="btn btn-secondary"
+                    >
+                      Excluir
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button @click="openNewPatient" class="mt-4 btn btn-primary">
+            Novo Paciente
+          </button>
+        </div>
+        <div
+          v-if="currentView === 'financeiro'"
+          class="bg-white p-6 rounded-lg shadow-md"
+        >
+          <h2 class="text-xl font-bold mb-4">Controle Financeiro</h2>
+          <div class="mb-6 flex flex-wrap gap-4">
+            <button @click="exportFinancialData" class="btn btn-primary">
+              Exportar Relatório
+            </button>
+            <div class="flex items-center gap-2">
+              <input
+                type="date"
+                v-model="filterDates.start"
+                class="p-2 border rounded"
+              />
+              <span>até</span>
+              <input
+                type="date"
+                v-model="filterDates.end"
+                class="p-2 border rounded"
+              />
+              <button @click="filterByDateRange" class="btn btn-secondary">
+                Filtrar
+              </button>
+            </div>
+            <button @click="generateFinancialSummary" class="btn btn-primary">
+              Gerar Resumo
+            </button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-blue-100 p-4 rounded-lg">
+              <h3 class="font-bold text-blue-800">Receita Mensal</h3>
+              <p class="text-2xl">R$ {{ monthlyRevenue.toFixed(2) }}</p>
+            </div>
+            <div class="bg-red-100 p-4 rounded-lg">
+              <h3 class="font-bold text-red-800">Despesas Mensais</h3>
+              <p class="text-2xl">R$ {{ monthlyExpenses.toFixed(2) }}</p>
+            </div>
+            <div class="bg-green-100 p-4 rounded-lg">
+              <h3 class="font-bold text-green-800">Lucro Mensal</h3>
+              <p class="text-2xl">R$ {{ monthlyProfit.toFixed(2) }}</p>
+            </div>
+            <div class="bg-purple-100 p-4 rounded-lg">
+              <h3 class="font-bold text-purple-800">Pagamentos Pendentes</h3>
+              <p class="text-2xl">R$ {{ pendingPayments.toFixed(2) }}</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white p-4 rounded-lg shadow">
+              <h3 class="font-bold mb-2">Receitas vs Despesas</h3>
+              <canvas id="financialChart"></canvas>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow">
+              <h3 class="font-bold mb-2">Fluxo de Caixa</h3>
+              <canvas id="cashFlowChart"></canvas>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 class="font-bold mb-2">Registro de Despesas</h3>
+              <form @submit.prevent="addNewExpense" class="mb-4">
+                <div class="grid grid-cols-2 gap-2">
+                  <input
+                    v-model="newExpense.description"
+                    placeholder="Descrição"
+                    class="p-2 border rounded"
+                  />
+                  <input
+                    v-model="newExpense.amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="Valor"
+                    class="p-2 border rounded"
+                  />
+                </div>
+                <button type="submit" class="mt-2 btn btn-primary w-full">
+                  Adicionar Despesa
+                </button>
+              </form>
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead>
+                    <tr>
+                      <th class="p-2 text-left">Data</th>
+                      <th class="p-2 text-left">Descrição</th>
+                      <th class="p-2 text-left">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="expense in filteredExpenses.length ? filteredExpenses : expenses"
+                      :key="expense.id"
+                      class="border-b"
+                    >
+                      <td class="p-2">{{ formatDate(expense.date) }}</td>
+                      <td class="p-2">{{ expense.description }}</td>
+                      <td class="p-2">R$ {{ expense.amount.toFixed(2) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h3 class="font-bold mb-2">Controle de Pagamentos</h3>
+              <form @submit.prevent="addNewPayment" class="mb-4">
+                <div class="grid grid-cols-2 gap-2">
+                  <select
+                    v-model="newPayment.patientId"
+                    class="p-2 border rounded"
+                  >
+                    <option value="">Selecione o Paciente</option>
+                    <option
+                      v-for="patient in patients"
+                      :key="patient.id"
+                      :value="patient.id"
+                    >
+                      {{ patient.name }}
+                    </option>
+                  </select>
+                  <input
+                    v-model="newPayment.amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="Valor"
+                    class="p-2 border rounded"
+                  />
+                </div>
+                <button type="submit" class="mt-2 btn btn-primary w-full">
+                  Registrar Pagamento
+                </button>
+              </form>
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead>
+                    <tr>
+                      <th class="p-2 text-left">Data</th>
+                      <th class="p-2 text-left">Paciente</th>
+                      <th class="p-2 text-left">Valor</th>
+                      <th class="p-2 text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="payment in filteredPayments.length ? filteredPayments : payments"
+                      :key="payment.id"
+                      class="border-b"
+                    >
+                      <td class="p-2">{{ formatDate(payment.date) }}</td>
+                      <td class="p-2">
+                        {{ getPatientName(payment.patientId) }}
+                      </td>
+                      <td class="p-2">R$ {{ payment.amount.toFixed(2) }}</td>
+                      <td class="p-2">
+                        <select
+                          @change="markPaymentStatus(payment.id, $event.target.value)"
+                          :value="payment.status"
+                          class="p-1 border rounded"
+                        >
+                          <option value="Pendente">Pendente</option>
+                          <option value="Pago">Pago</option>
+                          <option value="Cancelado">Cancelado</option>
+                        </select>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div v-if="showSummaryModal" class="modal">
+            <div class="modal-content">
+              <h3 class="text-xl font-bold mb-4">Resumo Financeiro</h3>
+              <div class="grid gap-4">
+                <div class="p-3 bg-blue-50 rounded">
+                  <p class="font-bold">Receita Total</p>
+                  <p>R$ {{ financialSummary.totalRevenue.toFixed(2) }}</p>
+                </div>
+                <div class="p-3 bg-red-50 rounded">
+                  <p class="font-bold">Despesas Totais</p>
+                  <p>R$ {{ financialSummary.totalExpenses.toFixed(2) }}</p>
+                </div>
+                <div class="p-3 bg-yellow-50 rounded">
+                  <p class="font-bold">Pagamentos Pendentes</p>
+                  <p>R$ {{ financialSummary.pendingPayments.toFixed(2) }}</p>
+                </div>
+                <div class="p-3 bg-green-50 rounded">
+                  <p class="font-bold">Margem de Lucro</p>
+                  <p>{{ financialSummary.profitMargin }}%</p>
+                </div>
+              </div>
+              <button
+                @click="showSummaryModal = false"
+                class="btn btn-secondary mt-4"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+        <div v-if="currentView === 'configuracoes'">
+          <h2 class="text-xl font-bold mb-4">Configurações</h2>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white p-4 rounded shadow">
+              <h3 class="font-bold mb-2">Horários de Atendimento</h3>
+              <div v-for="day in workingHours" :key="day.name" class="mb-2">
+                <label class="block"
+                  ><input type="checkbox" v-model="day.active" /> {{ day.name
+                  }}</label
+                ><input
+                  v-if="day.active"
+                  type="time"
+                  v-model="day.start"
+                  class="mr-2"
+                /><input v-if="day.active" type="time" v-model="day.end" />
+              </div>
+            </div>
+            <div class="bg-white p-4 rounded shadow">
+              <h3 class="font-bold mb-2">Integrações</h3>
+              <div class="mb-2">
+                <label class="block"
+                  ><input
+                    type="checkbox"
+                    v-model="integrations.googleCalendar"
+                  />
+                  Google Agenda</label
+                >
+              </div>
+              <div class="mb-2">
+                <label class="block"
+                  ><input type="checkbox" v-model="integrations.payment" />
+                  Sistema de Pagamento</label
+                >
+              </div>
+              <div class="mb-2">
+                <label class="block"
+                  ><input
+                    type="checkbox"
+                    v-model="integrations.videoConference"
+                  />
+                  Videoconferência</label
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <div v-if="showModal" class="modal">
+        <div class="modal-content">
+          <h3 class="text-xl font-bold mb-4">{{ modalTitle }}</h3>
+          <form @submit.prevent="submitModal">
+            <div v-if="modalType === 'appointment'" class="mb-4">
+              <label class="block mb-2"
+                >Data:<input
+                  type="date"
+                  v-model="newAppointment.date"
+                  required=""
+                  class="w-full p-2 border rounded" /></label
+              ><label class="block mb-2"
+                >Hora:<input
+                  type="time"
+                  v-model="newAppointment.time"
+                  required=""
+                  class="w-full p-2 border rounded" /></label
+              ><label class="block mb-2"
+                >Paciente:<select
+                  v-model="newAppointment.patientId"
+                  required=""
+                  class="w-full p-2 border rounded"
+                >
+                  <option value="">Selecione um paciente</option>
+                  <option
+                    v-for="patient in patients"
+                    :key="patient.id"
+                    :value="patient.id"
+                  >
+                    {{ patient.name }}
+                  </option>
+                </select></label
+              >
+            </div>
+            <div v-if="modalType === 'patient'" class="mb-4">
+              <label class="block mb-2"
+                >Nome:<input
+                  type="text"
+                  v-model="newPatient.name"
+                  required=""
+                  class="w-full p-2 border rounded" /></label
+              ><label class="block mb-2"
+                >Email:<input
+                  type="email"
+                  v-model="newPatient.email"
+                  required=""
+                  class="w-full p-2 border rounded" /></label
+              ><label class="block mb-2"
+                >Telefone:<input
+                  type="tel"
+                  v-model="newPatient.phone"
+                  required=""
+                  class="w-full p-2 border rounded"
+              /></label>
+            </div>
+            <div class="mt-4">
+              <button type="submit" class="btn btn-primary mr-2">Salvar</button
+              ><button
+                @click="closeModal"
+                type="button"
+                class="btn btn-secondary"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <button
+      @click="scheduleWhatsApp"
+      class="bg-green-500 text-white px-4 py-2 rounded mt-4"
+    >
+      Agendar via WhatsApp
+    </button>
+    <div class="fixed bottom-4 right-4 z-50">
+      <div
+        v-if="todayNotifications.length === 0"
+        class="bg-gray-500 text-white px-4 py-2 rounded mb-2"
+      >
+        Não há consultas agendadas para hoje
+      </div>
+      <div
+        v-for="notification in todayNotifications"
+        :key="notification.id"
+        class="bg-blue-500 text-white px-4 py-2 rounded mb-2 shadow-lg hidden"
+      >
+        {{ notification.message }} - {{ notification.time }}
+      </div>
+    </div>
+  </body>
+</html>
